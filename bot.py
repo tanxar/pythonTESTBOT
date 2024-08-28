@@ -48,7 +48,12 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_create_account(update, context)
     elif process == 'login':
         await handle_login(update, context)
+    elif process == 'create_password':
+        await create_password(update, context)
+    elif process == 'check_password':
+        await check_password(update, context)
 
+# Handle account creation
 async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     username = update.message.text
     cur.execute("SELECT * FROM users WHERE username = %s", (username,))
@@ -61,6 +66,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("Username available. Choose a password:")
         context.user_data['process'] = 'create_password'
 
+# Handle password creation for new account
 async def create_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     password = update.message.text
     username = context.user_data['username']
@@ -69,6 +75,7 @@ async def create_password(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text("Account created successfully!")
     context.user_data.clear()
 
+# Handle login process
 async def handle_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     username = update.message.text
     cur.execute("SELECT * FROM users WHERE username = %s", (username,))
@@ -81,6 +88,7 @@ async def handle_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("Username found. Enter your password:")
         context.user_data['process'] = 'check_password'
 
+# Handle password checking during login
 async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     password = update.message.text
     username = context.user_data['username']
