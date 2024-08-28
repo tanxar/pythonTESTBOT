@@ -11,7 +11,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Hello, World!')
 
 def main() -> None:
-    # Create the application and pass it the bot token
+    # Initialize the application with your bot token
     application = Application.builder().token("7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE").build()
 
     # Register the start command handler
