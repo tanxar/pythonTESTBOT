@@ -52,10 +52,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await handle_login(update, context)
     elif process == 'check_password':
         await check_password(update, context)
+    else:
+        await update.message.reply_text("Unknown state. Please start over by pressing 'Start'.")
 
 # Handle account creation
 async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     username = update.message.text
+    print(f"Received username for account creation: {username}")  # Debugging line
     cur.execute("SELECT * FROM users WHERE username = %s", (username,))
     result = cur.fetchone()
 
@@ -70,6 +73,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 async def create_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     password = update.message.text
     username = context.user_data.get('username')
+    print(f"Creating account with username: {username} and password: {password}")  # Debugging line
     cur.execute("INSERT INTO users (username, password, balance) VALUES (%s, %s, %s)", (username, password, 0))
     conn.commit()
     await update.message.reply_text("Account created successfully!")
@@ -78,6 +82,7 @@ async def create_password(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 # Handle login process
 async def handle_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     username = update.message.text
+    print(f"Received username for login: {username}")  # Debugging line
     cur.execute("SELECT * FROM users WHERE username = %s", (username,))
     result = cur.fetchone()
 
@@ -92,6 +97,7 @@ async def handle_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     password = update.message.text
     username = context.user_data.get('username')
+    print(f"Checking password for username: {username}")  # Debugging line
     cur.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
     result = cur.fetchone()
 
