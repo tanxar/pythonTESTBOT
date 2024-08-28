@@ -1,38 +1,128 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-import logging
-from flask import Flask, request
 import os
+import psycopg2
+from flask import Flask, request
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Enable logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Define the start command handler
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Hello, World!')
+# Database connection setup
+DATABASE_URL = "postgresql://users_info_6gu3_user:RFH4r8MZg0bMII5ruj5Gly9fwdTLAfSV@dpg-cr6vbghu0jms73ffc840-a/users_info_6gu3"
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
 
 # Initialize Telegram bot application
-bot_token = "7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE"
-application = Application.builder().token(bot_token).build()
-application.add_handler(CommandHandler("start", start))
+TOKEN = "7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE"
+WEBHOOK_URL = 'https://pythontestbot-f4g1.onrender.com/' + TOKEN
+app_telegram = ApplicationBuilder().token(TOKEN).build()
 
-# Define the route for webhook
-@app.route(f'/{bot_token}', methods=['POST'])
+# Start command handler
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [
+        [
+            InlineKeyboardButton("Create Account", callback_data='create_account'),
+            InlineKeyboardButton("Login", callback_data='login')
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('Please choose:', reply_markup=reply_markup)
+
+# Handle button clicks
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'create_account':
+        await query.message.reply_text('Choose a username:')
+        context.user_data['process'] = 'create_account'
+    elif query.data == 'login':
+        await query.message.reply_text('Enter your username:')
+        context.user_data['process'] = 'login'
+
+# Handle text input based on the user's process
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    process = context.user_data.get('process')
+
+    if process == 'create_account':
+        await handle_create_account(update, context)
+    elif process == 'login':
+        await handle_login(update, context)
+
+async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    username = update.message.text
+    cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+    result = cur.fetchone()
+
+    if result:
+        await update.message.reply_text("Username taken, choose another username:")
+    else:
+        context.user_data['username'] = username
+        await update.message.reply_text("Username available. Choose a password:")
+        context.user_data['process'] = 'create_password'
+
+async def create_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    password = update.message.text
+    username = context.user_data['username']
+    cur.execute("INSERT INTO users (username, password, balance) VALUES (%s, %s, %s)", (username, password, 0))
+    conn.commit()
+    await update.message.reply_text("Account created successfully!")
+    context.user_data.clear()
+
+async def handle_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    username = update.message.text
+    cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+    result = cur.fetchone()
+
+    if not result:
+        await update.message.reply_text("Username does not exist, enter a valid username:")
+    else:
+        context.user_data['username'] = username
+        await update.message.reply_text("Username found. Enter your password:")
+        context.user_data['process'] = 'check_password'
+
+async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    password = update.message.text
+    username = context.user_data['username']
+    cur.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
+    result = cur.fetchone()
+
+    if not result:
+        await update.message.reply_text("Username or password not correct, enter your username again:")
+        context.user_data['process'] = 'login'
+    else:
+        await update.message.reply_text("Login successful!")
+        context.user_data.clear()
+
+# Flask route for the root URL
+@app.route('/')
+def index():
+    return "Hello, World"
+
+# Flask route for handling Telegram webhook
+@app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    json_str = request.get_data(as_text=True)
-    update = Update.de_json(json_str, application.bot)
-    application.update_queue.put(update)
-    return 'OK'
+    update = Update.de_json(request.get_json(), app_telegram.bot)
+    app_telegram.process_update(update)
+    return "ok"
 
-# Set webhook
-def set_webhook():
-    webhook_url = f"https://pythontestbot-f4g1.onrender.com/{bot_token}"
-    application.bot.set_webhook(url=webhook_url)
+# Error handler
+async def error(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print(f'Update {update} caused error {context.error}')
 
+# Set up Telegram bot handlers
+app_telegram.add_handler(CommandHandler("start", start))
+app_telegram.add_handler(CallbackQueryHandler(button_handler))
+app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+app_telegram.add_error_handler(error)
+
+# Main entry point for the Flask app
 if __name__ == '__main__':
-    set_webhook()
-    app.run(host='0.0.0.0', port=8080)
+    # Set up webhook
+    app_telegram.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8443)),
+        url_path=TOKEN,
+        webhook_url=WEBHOOK_URL
+    )
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8443)))
