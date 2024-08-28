@@ -46,10 +46,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if process == 'create_account':
         await handle_create_account(update, context)
-    elif process == 'login':
-        await handle_login(update, context)
     elif process == 'create_password':
         await create_password(update, context)
+    elif process == 'login':
+        await handle_login(update, context)
     elif process == 'check_password':
         await check_password(update, context)
 
@@ -69,7 +69,7 @@ async def handle_create_account(update: Update, context: ContextTypes.DEFAULT_TY
 # Handle password creation for new account
 async def create_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     password = update.message.text
-    username = context.user_data['username']
+    username = context.user_data.get('username')
     cur.execute("INSERT INTO users (username, password, balance) VALUES (%s, %s, %s)", (username, password, 0))
     conn.commit()
     await update.message.reply_text("Account created successfully!")
@@ -91,7 +91,7 @@ async def handle_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 # Handle password checking during login
 async def check_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     password = update.message.text
-    username = context.user_data['username']
+    username = context.user_data.get('username')
     cur.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
     result = cur.fetchone()
 
