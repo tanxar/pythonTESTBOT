@@ -1,6 +1,16 @@
 services:
   - type: web
-    name: telegram-bot
+    name: telegram-bot-web
+    env: python
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: |
+      gunicorn -w 4 -b 0.0.0.0:8080 web_server:app
+    plan: free
+    port: 8080
+
+  - type: web
+    name: telegram-bot-worker
     env: python
     buildCommand: |
       pip install -r requirements.txt
