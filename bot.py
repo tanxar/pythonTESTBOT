@@ -1,26 +1,55 @@
 from flask import Flask, request
 import telegram
+import logging
 import os
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Use your actual token here
+# Your actual Telegram bot token
 TOKEN = '7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE'
-bot = telegram.Bot(token=TOKEN)
+
+# Initialize the bot with a higher timeout setting
+bot = telegram.Bot(token=TOKEN, request_kwargs={'timeout': 30})
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Webhook URL
+WEBHOOK_URL = 'https://pythontestbot-f4g1.onrender.com/' + TOKEN
+
+def set_webhook():
+    """Sets the webhook for the bot."""
+    try:
+        response = bot.set_webhook(url=WEBHOOK_URL)
+        if response:
+            logging.info("Webhook set successfully.")
+        else:
+            logging.error("Failed to set webhook.")
+    except Exception as e:
+        logging.error(f"Error setting webhook: {e}")
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = telegram.Update.de_json(request.get_json(), bot)
-    chat_id = update.message.chat_id
-    text = update.message.text
+    try:
+        # Parse the incoming update from Telegram
+        update = telegram.Update.de_json(request.get_json(), bot)
+        chat_id = update.message.chat_id
+        text = update.message.text
 
-    if update.message:
-        if text:
-            user_name = text
-            bot.send_message(chat_id=chat_id, text=f'Hello {user_name}!')
-        else:
-            bot.send_message(chat_id=chat_id, text='Tell me your name.')
+        logging.info(f"Received message: '{text}' from chat ID: {chat_id}")
+
+        if update.message:
+            if text:
+                user_name = text
+                bot.send_message(chat_id=chat_id, text=f'Hello {user_name}!')
+                logging.info(f"Sent message: 'Hello {user_name}!' to chat ID: {chat_id}")
+            else:
+                bot.send_message(chat_id=chat_id, text='Tell me your name.')
+                logging.info(f"Sent message: 'Tell me your name.' to chat ID: {chat_id}")
+
+    except Exception as e:
+        logging.error(f"Error occurred: {e}")
     
     return 'ok'
 
@@ -29,6 +58,9 @@ def index():
     return 'Hello! The bot is running.'
 
 if __name__ == '__main__':
+    # Set webhook when starting the app
+    set_webhook()
+    
     # Render will set the port for us
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
