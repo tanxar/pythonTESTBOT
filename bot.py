@@ -2,7 +2,6 @@ from flask import Flask, request
 import telegram
 import logging
 import os
-from telegram.utils.request import Request
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -10,9 +9,8 @@ app = Flask(__name__)
 # Your actual Telegram bot token
 TOKEN = '7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE'
 
-# Initialize the bot with a custom request adapter
-request = Request(con_pool_size=8, read_timeout=30)
-bot = telegram.Bot(token=TOKEN, request=request)
+# Initialize the bot
+bot = telegram.Bot(token=TOKEN)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +32,7 @@ def set_webhook():
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
     try:
-        # Parse the incoming update from Telegram
+        # Parse the incoming update from Telegram using Flask's request
         update = telegram.Update.de_json(request.get_json(), bot)
         chat_id = update.message.chat_id
         text = update.message.text
