@@ -2,6 +2,7 @@ from flask import Flask, request
 import telegram
 import logging
 import os
+from telegram.utils.request import Request
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -9,8 +10,9 @@ app = Flask(__name__)
 # Your actual Telegram bot token
 TOKEN = '7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE'
 
-# Initialize the bot with a higher timeout setting
-bot = telegram.Bot(token=TOKEN, request_kwargs={'timeout': 30})
+# Initialize the bot with a custom request adapter
+request = Request(con_pool_size=8, read_timeout=30)
+bot = telegram.Bot(token=TOKEN, request=request)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
