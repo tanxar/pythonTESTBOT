@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = '7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE'
 
 # Database connection
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://users_info_6gu3_user:RFH4r8MZg0bMII5ruj5Gly9fwdTLAfSV@dpg-cr6vbghu0jms73ffc840-a/users_info_6gu3')
+DATABASE_URL = 'postgresql://users_info_6gu3_user:RFH4r8MZg0bMII5ruj5Gly9fwdTLAfSV@dpg-cr6vbghu0jms73ffc840-a/users_info_6gu3'
 conn = psycopg2.connect(DATABASE_URL)
 cursor = conn.cursor()
 
@@ -52,7 +52,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     logger.info(f"Button pressed: {query.data}")
 
     if query.data == 'create_account':
@@ -67,7 +66,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     action = context.user_data.get('action')
-
     logger.info(f"Handling message with action: {action}")
 
     if action == 'create_account':
@@ -120,15 +118,20 @@ def webhook():
     return "ok"
 
 # Set webhook on startup
-@app.route('/set_webhook', methods=['GET', 'POST'])
+@app.route('/set_webhook', methods=['GET'])
 def set_webhook():
     webhook_url = f"https://pythontestbot-f4g1.onrender.com/{TELEGRAM_TOKEN}"
     try:
-        application.bot.set_webhook(url=webhook_url)
-        logger.info(f"Webhook set to {webhook_url}")
+        response = application.bot.set_webhook(url=webhook_url)
+        logger.info(f"Webhook set to {webhook_url}. Response: {response}")
     except Exception as e:
         logger.error(f"Error setting webhook: {e}")
     return "Webhook set"
+
+# Route for testing the server
+@app.route('/', methods=['GET'])
+def hello_world():
+    return "Hello, World!"
 
 if __name__ == "__main__":
     init_db()
