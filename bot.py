@@ -1,7 +1,7 @@
 import os
 import psycopg2
 from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
 app = Flask(__name__)
@@ -25,6 +25,11 @@ def init_db():
         );
     """)
     conn.commit()
+
+# Root route
+@app.route('/')
+def index():
+    return "Hello, World!"
 
 # Start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -90,7 +95,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Webhook route
 @app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
+    update = Update.de_json(request.get_json(force=True), application.bot)
     application.update_queue.put_nowait(update)
     return "ok"
 
