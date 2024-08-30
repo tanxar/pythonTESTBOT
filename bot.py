@@ -1,10 +1,19 @@
 import os
+import logging
 import psycopg2
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
+# Initialize Flask app
 app = Flask(__name__)
+
+# Set up basic logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # Telegram bot token
 TELEGRAM_TOKEN = '7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE'
@@ -26,13 +35,12 @@ def init_db():
     """)
     conn.commit()
 
-# Root route
-@app.route('/')
-def index():
-    return "Hello, World!"
+# Initialize bot application
+application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # Start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Received /start command")
     keyboard = [
         [InlineKeyboardButton("Create Account", callback_data='create_account')],
         [InlineKeyboardButton("Login", callback_data='login')]
@@ -44,6 +52,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    logger.info(f"Button pressed: {query.data}")
 
     if query.data == 'create_account':
         await query.message.reply_text("Please choose a username:")
@@ -58,9 +68,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     action = context.user_data.get('action')
 
+    logger.info(f"Handling message with action: {action}")
+
     if action == 'create_account':
         cursor.execute("SELECT * FROM users WHERE username = %s", (text,))
         if cursor.fetchone():
+            logger.info("Username taken, asking for another one.")
             await update.message.reply_text("Username taken, please choose another:")
         else:
             context.user_data['username'] = text
@@ -72,6 +85,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         password = text
         cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password))
         conn.commit()
+        logger.info(f"Account created for username: {username}")
         await update.message.reply_text(f"Account created successfully for {username} with balance 0!")
         context.user_data.clear()
 
@@ -86,9 +100,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         password = text
         cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
         if cursor.fetchone():
+            logger.info(f"Login successful for username: {username}")
             await update.message.reply_text(f"Login successful! Welcome back, {username}!")
             context.user_data.clear()
         else:
+            logger.info(f"Login failed for username: {username}")
             await update.message.reply_text("Username or password incorrect, please try again:")
             context.user_data['action'] = 'login'
 
@@ -104,13 +120,11 @@ def webhook():
 async def set_webhook():
     webhook_url = f"https://pythontestbot-f4g1.onrender.com/{TELEGRAM_TOKEN}"
     await application.bot.set_webhook(url=webhook_url)
+    logger.info(f"Webhook set to {webhook_url}")
     return "Webhook set"
 
 if __name__ == "__main__":
     init_db()
-
-    # Create the Application
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Add handlers to the application
     application.add_handler(CommandHandler('start', start))
