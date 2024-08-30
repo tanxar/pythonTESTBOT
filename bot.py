@@ -1,79 +1,142 @@
-from flask import Flask, request, jsonify
-import requests
+import os
+import logging
+import psycopg2
+from flask import Flask, request
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
+# Initialize Flask app
 app = Flask(__name__)
 
-# Your Telegram Bot Token
+# Set up basic logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Telegram bot token
 TELEGRAM_TOKEN = '7403620437:AAHUzMiWQt_AHAZ-PwYY0spVfcCKpWFKQoE'
-WEBHOOK_URL = 'https://pythontestbot-f4g1.onrender.com/webhook'
 
-# In-memory user storage
-users = {}
-sessions = {}
+# Database connection
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://users_info_6gu3_user:RFH4r8MZg0bMII5ruj5Gly9fwdTLAfSV@dpg-cr6vbghu0jms73ffc840-a/users_info_6gu3')
+conn = psycopg2.connect(DATABASE_URL)
+cursor = conn.cursor()
 
-def send_message(chat_id, text, reply_markup=None):
-    url = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
-    data = {'chat_id': chat_id, 'text': text}
-    if reply_markup:
-        data['reply_markup'] = reply_markup
-    requests.post(url, json=data)
+# Helper function to create users table if it doesn't exist
+def init_db():
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password VARCHAR(50) NOT NULL,
+            balance INTEGER DEFAULT 0
+        );
+    """)
+    conn.commit()
 
-@app.route('/setwebhook', methods=['GET'])
-def set_webhook():
-    url = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={WEBHOOK_URL}'
-    response = requests.get(url)
-    return jsonify(response.json())
+# Initialize bot application
+application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.get_json()
-    if 'message' not in data:
-        return jsonify({'status': 'error', 'message': 'Invalid request'}), 400
+# Start Command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Received /start command")
+    keyboard = [
+        [InlineKeyboardButton("Create Account", callback_data='create_account')],
+        [InlineKeyboardButton("Login", callback_data='login')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('Welcome! Please choose an option:', reply_markup=reply_markup)
 
-    message = data['message']
-    chat_id = message['chat']['id']
-    text = message.get('text', '').strip()
+# Handle button press
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    # Handle start command
-    if text == '/start':
-        reply_markup = {
-            'keyboard': [['Create account'], ['Login']],
-            'one_time_keyboard': True
-        }
-        send_message(chat_id, "Welcome! Choose an option:", reply_markup)
-        return jsonify({'status': 'ok'})
+    logger.info(f"Button pressed: {query.data}")
 
-    # Handle login option
-    if text.lower() == 'login':
-        sessions[chat_id] = {'step': 'awaiting_username'}
-        send_message(chat_id, "Please enter your username:")
-        return jsonify({'status': 'ok'})
+    if query.data == 'create_account':
+        await query.message.reply_text("Please choose a username:")
+        context.user_data['action'] = 'create_account'
 
-    # Handle login username
-    if chat_id in sessions and sessions[chat_id]['step'] == 'awaiting_username':
-        sessions[chat_id]['username'] = text
-        sessions[chat_id]['step'] = 'awaiting_password'
-        send_message(chat_id, "Please enter your password:")
-        return jsonify({'status': 'ok'})
+    elif query.data == 'login':
+        await query.message.reply_text("Please enter your username:")
+        context.user_data['action'] = 'login'
 
-    # Handle login password
-    if chat_id in sessions and sessions[chat_id]['step'] == 'awaiting_password':
-        username = sessions[chat_id].get('username')
-        password = text
-        if username and username not in users:
-            users[username] = password  # Register the user
-            del sessions[chat_id]
-            send_message(chat_id, "Login successful!")
-        elif username and users.get(username) == password:
-            del sessions[chat_id]
-            send_message(chat_id, "Login successful!")
+# Handle messages (username/password input)
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    action = context.user_data.get('action')
+
+    logger.info(f"Handling message with action: {action}")
+
+    if action == 'create_account':
+        cursor.execute("SELECT * FROM users WHERE username = %s", (text,))
+        if cursor.fetchone():
+            logger.info("Username taken, asking for another one.")
+            await update.message.reply_text("Username taken, please choose another:")
         else:
-            send_message(chat_id, "Invalid username or password.")
-        return jsonify({'status': 'ok'})
+            context.user_data['username'] = text
+            await update.message.reply_text("Please choose a password:")
+            context.user_data['action'] = 'create_password'
 
-    # Handle other messages
-    send_message(chat_id, "Please choose an option from the keyboard.")
-    return jsonify({'status': 'ok'})
+    elif action == 'create_password':
+        username = context.user_data.get('username')
+        password = text
+        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, password))
+        conn.commit()
+        logger.info(f"Account created for username: {username}")
+        await update.message.reply_text(f"Account created successfully for {username} with balance 0!")
+        context.user_data.clear()
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80)
+    elif action == 'login':
+        username = text
+        context.user_data['username'] = username
+        await update.message.reply_text("Please enter your password:")
+        context.user_data['action'] = 'login_password'
+
+    elif action == 'login_password':
+        username = context.user_data.get('username')
+        password = text
+        cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
+        if cursor.fetchone():
+            logger.info(f"Login successful for username: {username}")
+            await update.message.reply_text(f"Login successful! Welcome back, {username}!")
+            context.user_data.clear()
+        else:
+            logger.info(f"Login failed for username: {username}")
+            await update.message.reply_text("Username or password incorrect, please try again:")
+            context.user_data['action'] = 'login'
+
+# Webhook route
+@app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
+def webhook():
+    try:
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        application.update_queue.put_nowait(update)
+        logger.info("Received update from Telegram")
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
+    return "ok"
+
+# Set webhook on startup
+@app.route('/set_webhook', methods=['GET', 'POST'])
+def set_webhook():
+    webhook_url = f"https://pythontestbot-f4g1.onrender.com/{TELEGRAM_TOKEN}"
+    try:
+        application.bot.set_webhook(url=webhook_url)
+        logger.info(f"Webhook set to {webhook_url}")
+    except Exception as e:
+        logger.error(f"Error setting webhook: {e}")
+    return "Webhook set"
+
+if __name__ == "__main__":
+    init_db()
+
+    # Add handlers to the application
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
